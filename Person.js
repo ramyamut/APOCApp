@@ -10,7 +10,8 @@ var personSchema = new Schema({
 firstname: {type: String, required: true},
 lastname: {type: String, required: true},
 phonenumber: String,
-region: String
+region: String,
+testpos: false
 });
 
 // export personSchema as a class called Person
