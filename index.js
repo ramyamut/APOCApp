@@ -15,33 +15,41 @@ var Person = require('./Person.js');
 //import the Worker class from Worker.js
 var Worker = require('./Worker.js');
 
+
 // route for creating a new healthcare worker
 app.use('/createWorker', (req, res) => {
 	var newWorker = new Worker ({
-		firstname: req.body.firstname,
-		lastname: req.body.lastname,
-		username: req.body.username,
-		passwordHash: req.body.passwordHash,
-	});
+		firstname: req.query.firstname,
+		lastname: req.query.lastname,
+		username: req.query.username,
+		passwordHash: req.query.passwordHash,
+    });
+    console.log('createWorker called');
+    newWorker.save((err)=> {
+        if(err) {
+            res.json({'status': err});
+        } else {
+            res.json({'status': 'success'});
+        }
+    });
+});
 
-
-// save the person to the database
-newWorker.save( (err) => {
-if (err) {
-    res.type('html').status(200);
-    console.log(err);
-    res.end();
-}
-else {
-    // display the "successfull created" page using EJS
-    res.send("Success");
-	}
-  	});
-    }
-);
+app.use('/getWorker', (req, res) => {
+    var queryObj = {username: req.query.username};
+    Worker.findOne(queryObj, (err, worker)=> {
+        if(err) {
+            res.json({'status': err});
+        } else if(!worker) {
+            res.json({'status': 'no worker found'})
+        } else {
+            res.json(worker);
+        }
+    });
+});
 
 app.use('/createPerson', (req, res)=> {
     var newPerson = new Person ({
+        id: req.query.idNum,
         firstname: req.query.firstname,
         lastname: req.query.lastname,
         phonenumber: req.query.phonenumber,
@@ -51,11 +59,102 @@ app.use('/createPerson', (req, res)=> {
 
     newPerson.save((err) => {
         if (err) {
-            res.type('html').status(200);
-            console.log(err);
-            res.end();
+            res.json({'status': err})
         } else {
-            res.send("Success");
+            res.json({'status': 'success'});
         }
     })
 });
+
+app.use('/testPos', (req, res)=> {
+    var queryObj = {id: req.query.idNum};
+    const accountSid = 'AC69907a0d2d76d94ca05a3d3d843ab99f';
+    const authToken = 'e847f9057b9e4dae7834f342ab3544e7';
+    const twilioClient = require('twilio')(accountSid, authToken);
+    Person.findOne(queryObj, (err, person) => {
+        if(err) {
+            console.log(err);
+            res.json({'status': err});
+        } else if(!person) {
+            res.json({'status': 'no person found'});
+        } else if(person.testpos) {
+            res.json({'status': 'already tested positive'});
+        } else {
+            person.testpos = true;
+            var region = person.region;
+            Person.find({'region': region}, (err2, matches)=> {
+                if(err2) {
+                    console.log(err2);
+                    res.json({'status': err2});
+                } else {
+                    matches.forEach((match)=> {
+                        var numberToSend = '+1' + match.phonenumber;
+                        twilioClient.messages.create({
+                            body: 'Warning: Someone in your region has just tested positive for COVID-19!',
+                            from: '+18593502238',
+                            to: numberToSend
+                        }).then(message => console.log(message.sid));
+                    })
+                }
+            });
+            person.save((err3) => {
+                if(err3) {
+                    console.log(err3);
+                    res.json({'status': err3});
+                } else {
+                    res.json({'status': 'success'});
+                }
+            })
+        }
+    })
+});
+
+app.use('/getAllPeople', (req, res) => {
+		
+    // find all the Person objects in the database
+    Person.find({}, (err, people) => {
+        if (err) {
+            res.json({});
+        }
+        else {
+            res.json(people);
+        }
+    });
+});
+
+app.use('/getAllWorkers', (req, res) => {
+		
+    // find all the Worker objects in the database
+    Worker.find({}, (err, workers) => {
+        if (err) {
+            res.json({});
+        }
+        else {
+            res.json(workers);
+        }
+    });
+});
+
+//clears all of the workers from the database
+app.use('/clearWorkers', (req, res) => {
+	Worker.remove({}, (err) => {
+		if(err) {
+			res.send(err);
+		}
+    });
+    res.send('Removed workers');
+});
+
+//clears all people
+app.use('/clearPeople', (req, res) => {
+	Person.remove({}, (err) => {
+		if(err) {
+			res.send(err);
+		}
+	});
+	res.send('Removed people');
+});
+
+app.listen(3000,  () => {
+	console.log('Listening on port 3000');
+})
